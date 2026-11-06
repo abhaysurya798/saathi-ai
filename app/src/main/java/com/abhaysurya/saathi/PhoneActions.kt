@@ -2,7 +2,6 @@ package com.abhaysurya.saathi
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
@@ -104,20 +103,23 @@ object PhoneActions {
         }
 
         val pm = context.packageManager
-        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        val exact = apps.firstOrNull { app ->
-            pm.getApplicationLabel(app).toString().equals(query, ignoreCase = true)
+        val launcherIntent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+        val activities = pm.queryIntentActivities(launcherIntent, 0)
+        val exact = activities.firstOrNull { info ->
+            info.loadLabel(pm).toString().equals(query, ignoreCase = true)
         }
-        val match = exact ?: apps.firstOrNull { app ->
-            pm.getApplicationLabel(app).toString().contains(query, ignoreCase = true)
+        val match = exact ?: activities.firstOrNull { info ->
+            info.loadLabel(pm).toString().contains(query, ignoreCase = true)
         }
 
         if (match != null) {
-            val intent = pm.getLaunchIntentForPackage(match.packageName)
+            val packageName = match.activityInfo.packageName
+            val intent = pm.getLaunchIntentForPackage(packageName)
             if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
-                return "✅ ${pm.getApplicationLabel(match)} khol raha hoon"
+                return "✅ ${match.loadLabel(pm)} khol raha hoon"
             }
         }
 
