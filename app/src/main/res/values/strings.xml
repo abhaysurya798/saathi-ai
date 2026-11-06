@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Saathi AI</string>
+    <string name="hint_input">Bolo ya likho…</string>
+    <string name="hint_base_url">http://127.0.0.1:20128/api/v1</string>
+    <string name="hint_api_key">sk_omniroute</string>
+    <string name="hint_model">gemini/gemini-3-flash-preview</string>
+</resources>
