@@ -1,9 +1,13 @@
 package com.abhaysurya.saathi
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -40,6 +44,10 @@ class MainActivity : AppCompatActivity() {
     private var ttsReady = false
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
+    private lateinit var audioManager: AudioManager
+    private var mediaVolBefore = -1
+    private var mutedViaVolume = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private val audioPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -85,6 +93,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
         recycler = findViewById(R.id.recyclerMessages)
         input = findViewById(R.id.inputText)
@@ -242,6 +252,8 @@ class MainActivity : AppCompatActivity() {
             speechRecognizer?.stopListening()
             isListening = false
             hideStatus()
+            // Google ka stop-ding thodi der baad bajta hai — uske baad volume wapas karo
+            mainHandler.postDelayed({ restoreRecognitionSounds() }, 500)
             return
         }
 
@@ -281,12 +293,14 @@ class MainActivity : AppCompatActivity() {
                     override fun onError(error: Int) {
                         isListening = false
                         hideStatus()
+                        restoreRecognitionSounds()
                         toast("Awaaz samajh nahi aayi (code $error)")
                     }
 
                     override fun onResults(results: Bundle?) {
                         isListening = false
                         hideStatus()
+                        restoreRecognitionSounds()
                         val text = results
                             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                             ?.firstOrNull()
@@ -321,6 +335,49 @@ class MainActivity : AppCompatActivity() {
         speechRecognizer?.startListening(intent)
         isListening = true
         showStatus("Sun raha hoon…")
+        // Google recognizer ka start-ding dabao: media volume 0 (original yaad rakho)
+        muteRecognitionSounds()
+    }
+
+    private fun muteRecognitionSounds() {
+        if (mediaVolBefore != -1) return
+        try {
+            mediaVolBefore = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+            mutedViaVolume = true
+        } catch (e: Exception) {
+            mediaVolBefore = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            try {
+                audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_MUTE,
+                    0,
+                )
+                mutedViaVolume = false
+            } catch (e2: Exception) {
+                mediaVolBefore = -1
+            }
+        }
+    }
+
+    private fun restoreRecognitionSounds() {
+        if (mediaVolBefore == -1) return
+        val saved = mediaVolBefore
+        val viaVolume = mutedViaVolume
+        mediaVolBefore = -1
+        try {
+            if (viaVolume) {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, saved, 0)
+            } else {
+                audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_UNMUTE,
+                    0,
+                )
+            }
+        } catch (e: Exception) {
+            // volume restore fail ho to bhi chup rehna theek hai
+        }
     }
 
     private fun initTts() {
@@ -381,6 +438,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
+        restoreRecognitionSounds()
         speechRecognizer?.destroy()
         speechRecognizer = null
         tts?.stop()
